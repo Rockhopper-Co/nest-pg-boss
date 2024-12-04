@@ -6,7 +6,7 @@ name: release-please
 
 jobs:
   release-please:
-    if: github.repository == 'apricote/nest-pg-boss'
+    if: github.repository == 'Rockhopper-Co/nest-pg-boss'
 
     runs-on: ubuntu-latest
     steps:

@@ -5,7 +5,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "@apricote/nest-pg-boss"
+      "package-name": "@rockhopper-co/nest-pg-boss"
     }
   }
 }
