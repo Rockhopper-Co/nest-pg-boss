@@ -16,6 +16,10 @@ export class JobService<JobData extends object> {
     private readonly pgBoss: PGBoss,
   ) {}
 
+  get boss() {
+    return this.pgBoss;
+  }
+
   async send(
     data: JobData,
     options: PGBoss.SendOptions,
@@ -85,6 +89,10 @@ export class JobService<JobData extends object> {
 
   async unschedule() {
     this.pgBoss.unschedule(this.name);
+  }
+
+  async get(id: string): Promise<PGBoss.JobWithMetadata | null> {
+    return this.pgBoss.getJobById(id);
   }
 }
 
