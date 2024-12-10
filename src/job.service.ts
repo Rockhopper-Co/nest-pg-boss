@@ -20,6 +20,10 @@ export class JobService<JobData extends object> {
     return this.pgBoss;
   }
 
+  get jobName() {
+    return this.name;
+  }
+
   async send(
     data: JobData,
     options: PGBoss.SendOptions,
@@ -93,6 +97,17 @@ export class JobService<JobData extends object> {
 
   async get(id: string): Promise<PGBoss.JobWithMetadata | null> {
     return this.pgBoss.getJobById(id);
+  }
+
+  async cancel(id: string): Promise<void> {
+    return this.pgBoss.cancel(id);
+  }
+
+  async fetch(
+    options: PGBoss.FetchOptions,
+    batchSize: number
+  ): Promise<PGBoss.Job<object>[] | null> {
+    return this.pgBoss.fetch(this.name, batchSize, options);
   }
 }
 
