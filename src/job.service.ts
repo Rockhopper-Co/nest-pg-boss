@@ -105,7 +105,7 @@ export class JobService<JobData extends object> {
 
   async fetch(
     options: PGBoss.FetchOptions,
-    batchSize: number
+    batchSize: number,
   ): Promise<PGBoss.Job<object>[] | null> {
     return this.pgBoss.fetch(this.name, batchSize, options);
   }
