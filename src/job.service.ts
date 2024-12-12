@@ -11,10 +11,17 @@ import { getJobToken } from "./utils";
 
 @Injectable()
 export class JobService<JobData extends object> {
+  private readonly queue: any;
   constructor(
     private readonly name: string,
     private readonly pgBoss: PGBoss,
-  ) {}
+  ) {
+    this.queue = pgBoss.createQueue(name);
+  }
+
+  get queueInstance() {
+    return this.queue;
+  }
 
   get boss() {
     return this.pgBoss;
@@ -38,21 +45,6 @@ export class JobService<JobData extends object> {
   ): Promise<string | null> {
     // sendAfter has three overloads for all date variants we accept
     return this.pgBoss.sendAfter(this.name, data, options, date as any);
-  }
-
-  async sendOnce(
-    data: JobData,
-    options: PGBoss.SendOptions,
-    key: string,
-  ): Promise<string | null> {
-    return this.pgBoss.sendOnce(this.name, data, options, key);
-  }
-
-  async sendSingleton(
-    data: JobData,
-    options: PGBoss.SendOptions,
-  ): Promise<string | null> {
-    return this.pgBoss.sendSingleton(this.name, data, options);
   }
 
   async sendThrottled(
@@ -95,19 +87,26 @@ export class JobService<JobData extends object> {
     this.pgBoss.unschedule(this.name);
   }
 
-  async get(id: string): Promise<PGBoss.JobWithMetadata | null> {
-    return this.pgBoss.getJobById(id);
+  async getJobById(
+    id: string,
+    options?: PGBoss.ConnectionOptions & {
+      includeArchive: boolean;
+    },
+  ): Promise<PGBoss.JobWithMetadata<JobData> | null> {
+    return this.pgBoss.getJobById(this.name, id, options);
   }
 
-  async cancel(id: string): Promise<void> {
-    return this.pgBoss.cancel(id);
+  async cancel(id: string, options?: PGBoss.ConnectionOptions): Promise<void> {
+    return this.pgBoss.cancel(this.name, id, options);
   }
 
   async fetch(
-    options: PGBoss.FetchOptions,
-    batchSize: number,
+    options: PGBoss.JobFetchOptions &
+      PGBoss.ConnectionOptions & {
+        includeMetadata: true;
+      },
   ): Promise<PGBoss.Job<object>[] | null> {
-    return this.pgBoss.fetch(this.name, batchSize, options);
+    return this.pgBoss.fetch(this.name, options);
   }
 }
 
