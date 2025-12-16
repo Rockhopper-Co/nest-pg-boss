@@ -1,6 +1,6 @@
 {
   "name": "@rockhopper-co/nest-pg-boss",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Use pg-boss in your NestJS app",
   "author": "Julian Tölle <julian.toelle97@gmail.com>",
   "license": "MIT",
