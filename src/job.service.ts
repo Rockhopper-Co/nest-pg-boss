@@ -126,8 +126,16 @@ interface MethodDecorator<PropertyType> {
   ): TypedPropertyDescriptor<PropertyType>;
 }
 
+export interface HandleOptions extends PGBoss.WorkOptions {
+  /**
+   * When true, this handler won't be registered as a worker.
+   * The job will remain in the queue for other workers to handle.
+   */
+  disabled?: boolean;
+}
+
 interface HandleDecorator<JobData extends object> {
-  <Options extends PGBoss.WorkOptions>(
+  <Options extends HandleOptions>(
     options?: Options,
   ): MethodDecorator<
     Options extends { batchSize: number }
@@ -154,11 +162,14 @@ export const createJob = <JobData extends object>(
       inject: [PGBoss],
     },
     Inject: () => Inject(token),
-    Handle: (options: PGBoss.WorkOptions = {}) =>
-      SetMetadata<string, HandlerMetadata>(PG_BOSS_JOB_METADATA, {
+    Handle: (options: HandleOptions = {}) => {
+      const { disabled, ...workOptions } = options;
+      return SetMetadata<string, HandlerMetadata>(PG_BOSS_JOB_METADATA, {
         token,
         jobName: name,
-        workOptions: options,
-      }),
+        workOptions,
+        disabled,
+      });
+    },
   };
 };

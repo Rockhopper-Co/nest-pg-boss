@@ -137,6 +137,14 @@ export class PGBossModule
 
     await Promise.all(
       jobHandlers.map(async (handler) => {
+        if (handler.metadata.disabled) {
+          this.logger.log(
+            { jobName: handler.metadata.jobName },
+            "Skipped disabled handler",
+          );
+          return;
+        }
+
         const workerID = await this.instance.work(
           handler.metadata.jobName,
           handler.metadata.workOptions,
