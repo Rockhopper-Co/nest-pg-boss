@@ -4,7 +4,14 @@
   "description": "Use pg-boss in your NestJS app",
   "author": "Julian Tölle <julian.toelle97@gmail.com>",
   "license": "MIT",
-  "repository": "github:rockhopper-co/nest-pg-boss",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rockhopper-Co/nest-pg-boss.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
   "bugs": {
     "url": "https://github.com/rockhopper-co/nest-pg-boss/issues"
   },
