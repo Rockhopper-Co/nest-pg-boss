@@ -1,62 +1,84 @@
-name: Publish to npm
+# Publishes @rockhopper-co/nest-pg-boss to GitHub Packages so the whole
+# @rockhopper-co scope resolves from ONE registry (ENG-2392). npm offers only
+# @scope:registry — there is no per-package override — so once backend/.npmrc
+# pointed the scope at GitHub Packages, this package became unreachable there
+# and backend/package.json had to pin a literal npmjs tarball URL. A literal
+# URL is a frozen exact version in a production dependency that Dependabot
+# cannot see. Publishing here is what lets that pin go back to a caret range.
+#
+# Existing npmjs versions (…, 2.2.0) stay published; this only stops NEW ones
+# going there.
+name: Publish package
 
+# THE TRIGGER IS THE POINT. This runs on merge to `main` — this repo is
+# single-trunk, `git ls-remote --heads origin` returns only `main` — and NOT on
+# a hand-cut tag, which is what the previous npmjs workflow used. A tag-driven
+# publish makes a human the thing that has to remember, and nothing watches
+# whether they did; Dependabot cannot bump a consumer to a version nobody cut.
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Dry run (no publish)'
-        type: boolean
-        default: false
 
+# `packages: write` is what authorises the publish. GITHUB_TOKEN is enough for
+# GitHub Packages — no long-lived npm token to store or rotate, which is why
+# the `npm-publish` environment and the OIDC `id-token: write` the npmjs
+# workflow needed are both gone.
 permissions:
   contents: read
-  id-token: write
+  packages: write
+
+# Two runs publishing overlapping versions would race on the registry.
+concurrency:
+  group: publish-nest-pg-boss
+  cancel-in-progress: false
 
 jobs:
   publish:
-    name: Build, test, and publish
+    name: Build and publish
     runs-on: ubuntu-latest
-    environment: npm-publish
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          registry-url: https://registry.npmjs.org/
+          registry-url: https://npm.pkg.github.com
+          scope: "@rockhopper-co"
           cache: npm
 
-      - name: Upgrade npm CLI for Trusted Publishing
-        run: npm install -g npm@latest
+      - run: npm ci --no-audit --no-fund
 
-      - name: Install dependencies
-        run: npm ci
+      # `files` is ["./dist/"], so an unbuilt tree publishes an empty package.
+      - run: npm run build
 
-      - name: Build
-        run: npm run build
+      - run: npm run lint
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Verify package version matches tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Version is derived, never committed. github.run_number is monotonic per
+      # workflow file, so every merge to main produces a strictly higher
+      # version without a bot pushing a version bump back to the branch —
+      # nothing in git has to be edited for a release to happen, which is
+      # exactly what stops a human being the thing that forgets. The patch
+      # slot moves and the 2.2 minor is held, so consumers on ^2.2.0 pick it up.
+      # This file's run_number is already past 3 (three failed npmjs publish
+      # runs), so the first version published here is at least 2.2.4 — above
+      # the 2.2.0 that exists on npmjs, never a re-used number.
+      #
+      # RE-PUBLISH: skip, do not fail. Because the version is derived from
+      # run_number a push can never collide; the only way to reach an existing
+      # version is re-running an already-successful run, where the version
+      # being on the registry is the correct state and a red X would be a lie.
+      # A genuine publish failure (auth, network, a rejected tarball) still
+      # fails the step loudly — only "it is already there" is tolerated.
+      - name: Publish @rockhopper-co/nest-pg-boss
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: 2.2.${{ github.run_number }}
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
-            exit 1
+          set -euo pipefail
+          npm version --no-git-tag-version "$VERSION"
+          if npm view "@rockhopper-co/nest-pg-boss@$VERSION" version; then
+            echo "@rockhopper-co/nest-pg-boss@$VERSION is already on the registry — nothing to publish."
+            exit 0
           fi
-
-      - name: Publish dry-run
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm publish --dry-run --access public
-
-      - name: Publish to npm (Trusted Publishing + provenance)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
-        run: npm publish --access public
+          npm publish
