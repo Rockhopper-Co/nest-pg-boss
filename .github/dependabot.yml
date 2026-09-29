@@ -1,0 +1,87 @@
+# Dependabot configuration (ENG-6511).
+#
+# Every pull request Dependabot opens is an untrusted proposal — read the
+# lockfile diff, verify strict `npm ci`, never auto-merge. Patterned on
+# backend/.github/dependabot.yml.
+#
+# This package has NO production dependencies: everything it needs at runtime
+# is a peerDependency, and Dependabot does not bump peer ranges. So every npm
+# pull request here is a dev-toolchain bump, and the one group that matters is
+# dev minor/patch. Majors stay ungrouped so each arrives on its own pull
+# request and gets a breaking-change read. Majors are NOT ignored — that would
+# hide a major-version security fix.
+#
+# Merging to `main` PUBLISHES (.github/workflows/publish.yaml derives the
+# version from run_number), so even a dev-only bump ships a new 2.2.x that
+# backend's caret range picks up. Review accordingly.
+#
+# No `labels:` key on purpose. Dependabot creates its DEFAULT `dependencies`
+# label when it is missing, but silently ignores a custom label list naming a
+# label the repository does not have — and this repository has none.
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # Version-coupled families. A family pattern only claims its members if
+      # the catch-all below EXCLUDES them: Dependabot assigns a dependency to
+      # the highest-scoring group, and a group with no `patterns` (the
+      # catch-all) outscores every wildcard pattern. See the long comment in
+      # backend/.github/dependabot.yml (ENG-5707).
+      #
+      # MAINTENANCE: every pattern of every family group must also appear in
+      # dev-minor-patch's exclude-patterns.
+      nestjs:
+        patterns:
+          - "@nestjs/*"
+      # @typescript-eslint/* peers a bounded eslint range, so the two move
+      # together or ERESOLVE.
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+      # ts-jest peers `jest` and `@jest/*` by major.
+      jest:
+        patterns:
+          - "jest"
+          - "@jest/*"
+          - "ts-jest"
+          - "@types/jest"
+      dev-minor-patch:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+        exclude-patterns:
+          - "@nestjs/*"
+          - "eslint"
+          - "@eslint/*"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+          - "jest"
+          - "@jest/*"
+          - "ts-jest"
+          - "@types/jest"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
