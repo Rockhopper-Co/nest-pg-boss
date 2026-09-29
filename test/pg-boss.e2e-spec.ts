@@ -44,7 +44,9 @@ describe("PGBossModule (e2e)", () => {
 
   beforeAll(async () => {
     jest.setTimeout(60_000);
-    postgres = await new PostgreSqlContainer().start();
+    // testcontainers 11 made the image argument mandatory. This is the image
+    // 10.x defaulted to, so the database under test does not change.
+    postgres = await new PostgreSqlContainer("postgres:13.3-alpine").start();
   });
 
   afterAll(async () => {

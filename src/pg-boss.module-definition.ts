@@ -5,7 +5,7 @@ const {
   ConfigurableModuleClass,
   MODULE_OPTIONS_TOKEN,
   OPTIONS_TYPE,
-  ASYNC_OPTIONS_TYPE,
+  ASYNC_OPTIONS_TYPE, // eslint-disable-line @typescript-eslint/no-unused-vars -- read only by `typeof` below
 } = new ConfigurableModuleBuilder<PGBossModuleOptions>()
   .setClassMethodName("forRoot")
   .build();
