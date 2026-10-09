@@ -145,14 +145,19 @@ export class PGBossModule
           return;
         }
 
-        const workerID = await this.instance.work(
-          handler.metadata.jobName,
-          handler.metadata.workOptions,
-          handler.callback,
-        );
-        this.logger.log(
-          { workerID, jobName: handler.metadata.jobName },
-          "Registered Worker",
+        const workers = handler.metadata.workers ?? 1;
+        await Promise.all(
+          Array.from({ length: workers }, async () => {
+            const workerID = await this.instance.work(
+              handler.metadata.jobName,
+              handler.metadata.workOptions,
+              handler.callback,
+            );
+            this.logger.log(
+              { workerID, jobName: handler.metadata.jobName },
+              "Registered Worker",
+            );
+          }),
         );
       }),
     );
