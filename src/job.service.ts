@@ -132,6 +132,13 @@ export interface HandleOptions extends PGBoss.WorkOptions {
    * The job will remain in the queue for other workers to handle.
    */
   disabled?: boolean;
+  /**
+   * How many `work()` loops to register on this queue, all with the same
+   * options and the same handler. Default 1. pg-boss 10 has no in-process
+   * concurrency option; calling `work()` several times is how one process
+   * handles several jobs from one queue at once. Never passed to pg-boss.
+   */
+  workers?: number;
 }
 
 interface HandleDecorator<JobData extends object> {
@@ -163,12 +170,24 @@ export const createJob = <JobData extends object>(
     },
     Inject: () => Inject(token),
     Handle: (options: HandleOptions = {}) => {
-      const { disabled, ...workOptions } = options;
+      const { disabled, workers, ...workOptions } = options;
+      // Refused here, at declaration, because a count that registers no loop
+      // would leave the queue silently unserved. `disabled` is the way to
+      // register none.
+      if (
+        workers !== undefined &&
+        !(Number.isInteger(workers) && workers >= 1)
+      ) {
+        throw new Error(
+          `Job "${name}": workers must be a positive integer, got ${workers}`,
+        );
+      }
       return SetMetadata<string, HandlerMetadata>(PG_BOSS_JOB_METADATA, {
         token,
         jobName: name,
         workOptions,
         disabled,
+        workers,
       });
     },
   };
