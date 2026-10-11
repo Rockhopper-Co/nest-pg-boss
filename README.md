@@ -116,7 +116,17 @@ class FoobarService {
 You can optionally pass an object with [WorkOptions](https://github.com/timgit/pg-boss/blob/1f541263a906781efaf607f539340c9609db77df/types.d.ts#L119) to `.Handle()`:
 
 ```typescript
-@FoobarJob.Handle({ teamSize: 10, teamConcurrency: 2 })
+@FoobarJob.Handle({ batchSize: 1, pollingIntervalSeconds: 2 })
+```
+
+pg-boss 10 has no in-process concurrency option (`teamSize` and
+`teamConcurrency` were removed and are silently ignored). To handle several jobs
+from one queue at once in one process, ask for several `work()` loops with
+`workers` (default 1). Each loop gets the same options and the same handler;
+`workers` itself is never passed to pg-boss, and `disabled: true` registers none.
+
+```typescript
+@FoobarJob.Handle({ batchSize: 1, workers: 3 })
 ```
 
 ## Test

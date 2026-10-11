@@ -15,9 +15,28 @@ name: Publish package
 # a hand-cut tag, which is what the previous npmjs workflow used. A tag-driven
 # publish makes a human the thing that has to remember, and nothing watches
 # whether they did; Dependabot cannot bump a consumer to a version nobody cut.
+#
+# ENG-7256 — THE EPIC PRERELEASE BRIDGE, for `epic/one-enrollment-lane` only.
+#
+# The backend's enrollment lane (ENG-7221) needs `Handle({ workers })` while the
+# work still lives on this epic branch, and an epic branch never merges to
+# `main` until the epic is declared done. So a push to that ONE epic branch also
+# publishes — as a PRERELEASE, `2.2.<run>-epic-enrollment.<run>`, under the
+# `epic-enrollment` dist-tag.
+#
+# THE SAFETY PROPERTY, and it is why a prerelease and not a plain version:
+# semver `^` ranges exclude prereleases, so the backend's `^2.2.5` cannot
+# resolve `2.2.7-epic-enrollment.7`. A consumer that did not opt in by pinning
+# the EXACT version cannot pick up epic code, and `latest` never moves — the
+# epic arm always passes `--tag epic-enrollment`.
+#
+# REMOVE THIS BRANCH from the trigger, the ref guard and the version step at
+# the epic's close-out, and move the backend's exact pin back to a caret range.
 on:
   push:
-    branches: [main]
+    branches: [main, epic/one-enrollment-lane]
+  # A dispatch runs only from `main` or the bridged epic (ref guard on the job);
+  # from anywhere else it does not run, because the `else` arm publishes `latest`.
   workflow_dispatch:
 
 # `packages: write` is what authorises the publish. GITHUB_TOKEN is enough for
@@ -36,8 +55,31 @@ concurrency:
 jobs:
   publish:
     name: Build and publish
+    # `main` publishes `latest`, which consumers resolve through `^2.2.x`. The
+    # bridged epic publishes a prerelease on `epic-enrollment`. Every other ref
+    # does not run, dispatch included — before ENG-7256 a dispatch from a
+    # feature branch would have published that branch to `latest`.
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/epic/one-enrollment-lane'
     runs-on: ubuntu-latest
     steps:
+      # The version + dist-tag pair, computed once. The ref decides:
+      #   main                     → `2.2.<run>`                       on `latest`
+      #   epic/one-enrollment-lane → `2.2.<run>-epic-enrollment.<run>` on `epic-enrollment`
+      # `github.run_number` is monotonic per workflow file, so the two arms can
+      # never collide on a version.
+      - name: Resolve version and dist-tag
+        id: meta
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/epic/one-enrollment-lane" ]; then
+            echo "version=2.2.${GITHUB_RUN_NUMBER}-epic-enrollment.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "dist_tag=epic-enrollment" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=2.2.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -53,6 +95,12 @@ jobs:
       - run: npm run build
 
       - run: npm run lint
+
+      # The unit specs, BEFORE anything is published. The epic arm ships code to
+      # the backend that no `main` review has seen yet, so this is the last place
+      # a broken `Handle({ workers })` can be stopped. Unit specs only; the
+      # database-backed e2e suite (`test:e2e`) is not run here.
+      - run: npm test
 
       # Version is derived, never committed. github.run_number is monotonic per
       # workflow file, so every merge to main produces a strictly higher
@@ -73,7 +121,8 @@ jobs:
       - name: Publish @rockhopper-co/nest-pg-boss
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: 2.2.${{ github.run_number }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          DIST_TAG: ${{ steps.meta.outputs.dist_tag }}
         run: |
           set -euo pipefail
           npm version --no-git-tag-version "$VERSION"
@@ -81,4 +130,4 @@ jobs:
             echo "@rockhopper-co/nest-pg-boss@$VERSION is already on the registry — nothing to publish."
             exit 0
           fi
-          npm publish
+          npm publish --tag "$DIST_TAG"
