@@ -4,6 +4,11 @@ on:
   push:
   workflow_call:
 
+# Read-only token: the job checks out, installs, builds and lints, nothing more
+# (code scanning alert #4, actions/missing-workflow-permissions; ENG-7644).
+permissions:
+  contents: read
+
 jobs:
   api:
     runs-on: ubuntu-latest
