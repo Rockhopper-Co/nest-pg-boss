@@ -11,6 +11,15 @@
 # request and gets a breaking-change read. Majors are NOT ignored — that would
 # hide a major-version security fix.
 #
+# One carve-out, ENG-9410: runtime majors follow LTS only. `@types/node`,
+# which describes the Node runtime's APIs, ignores
+# `version-update:semver-major`; its minors and patches keep flowing, and the
+# next major is taken by hand with the runtime on its own ticket. The
+# `update-types` form does not block security updates: dependabot-core
+# common/lib/dependabot/config/ignore_condition.rb returns only explicit
+# `versions` ranges when the job is a security update. A `versions:` range
+# WOULD block them, so never use one for this rule.
+#
 # Merging to `main` PUBLISHES (.github/workflows/publish.yaml derives the
 # version from run_number), so even a dev-only bump ships a new 2.2.x that
 # backend's caret range picks up. Review accordingly.
@@ -27,6 +36,19 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # ENG-9410, LTS-only policy. @types/node describes the Node runtime's APIs,
+    # so its major follows the runtime this repository runs
+    # (.node-version 20.18.1),
+    # never the newest types: a later major type-checks code against APIs
+    # the runtime lacks.
+    # 22.x minors and patches still arrive through
+    # dev-minor-patch. Raise it by hand, in the same change that moves the
+    # runtime to the next LTS major. Note @types/node is 22.20.4 while
+    # .node-version is 20: this ignore stops the gap widening, it does not
+    # close it.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # Version-coupled families. A family pattern only claims its members if
       # the catch-all below EXCLUDES them: Dependabot assigns a dependency to
