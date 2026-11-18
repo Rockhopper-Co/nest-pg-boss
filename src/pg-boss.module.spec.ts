@@ -1,9 +1,11 @@
 import { INestApplication, Injectable } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import PGBoss from "pg-boss";
+import type { Job, WorkHandler, WorkOptions } from "pg-boss";
 import { HandlerScannerService } from "./handler-scanner.service";
-import { createJob } from "./job.service";
+import { createJob, JobService } from "./job.service";
+import { PG_BOSS_INSTANCE } from "./pg-boss.constants";
 import { PGBossModule } from "./pg-boss.module";
+import { getJobToken } from "./utils";
 
 /**
  * ENG-7256 — `Handle({ workers })` registers N `work()` loops on one queue.
@@ -17,6 +19,9 @@ import { PGBossModule } from "./pg-boss.module";
  * The module, the decorator and the handler scanner are all real here. Only
  * the pg-boss instance is faked, so no database is needed and every `work()`
  * call the module makes is recorded.
+ *
+ * ENG-9430 (plan 117 SP02): the instance is provided under the string token
+ * `PG_BOSS_INSTANCE`, and a handler always receives the batch as `Job[]`.
  */
 
 interface LaneJobData {
@@ -26,28 +31,37 @@ interface LaneJobData {
 const MultiJob = createJob<LaneJobData>("multi-lane");
 const SingleJob = createJob<LaneJobData>("single-lane");
 const DisabledJob = createJob<LaneJobData>("disabled-lane");
+const PlainJob = createJob<LaneJobData>("plain-lane");
 
 @Injectable()
 class LaneHandlers {
-  public readonly handled: PGBoss.Job<LaneJobData>[][] = [];
+  public readonly handled: Job<LaneJobData>[][] = [];
 
   @MultiJob.Handle({ batchSize: 1, workers: 3 })
-  async handleMulti(jobs?: PGBoss.Job<LaneJobData>[]) {
+  async handleMulti(jobs?: Job<LaneJobData>[]) {
     this.handled.push(jobs ?? []);
   }
 
   @SingleJob.Handle({ batchSize: 1 })
-  async handleSingle(jobs?: PGBoss.Job<LaneJobData>[]) {
+  async handleSingle(jobs?: Job<LaneJobData>[]) {
     this.handled.push(jobs ?? []);
   }
 
   @DisabledJob.Handle({ batchSize: 1, workers: 3, disabled: true })
-  async handleDisabled(jobs?: PGBoss.Job<LaneJobData>[]) {
+  async handleDisabled(jobs?: Job<LaneJobData>[]) {
     this.handled.push(jobs ?? []);
+  }
+
+  // No options at all: pg-boss 12 hands every handler an array. Under the
+  // pg-boss 9 typing this decorator demanded a single-job handler and the
+  // method below did not compile.
+  @PlainJob.Handle()
+  async handlePlain(jobs: Job<LaneJobData>[]) {
+    this.handled.push(jobs);
   }
 }
 
-type WorkCall = [string, PGBoss.WorkOptions, PGBoss.WorkHandler<unknown>];
+type WorkCall = [string, WorkOptions, WorkHandler<unknown>];
 
 describe("PGBossModule — Handle({ workers })", () => {
   let app: INestApplication;
@@ -74,11 +88,11 @@ describe("PGBossModule — Handle({ workers })", () => {
         PGBossModule.forRoot({
           connectionString: "postgres://never-connected/eng-7256",
         }),
-        PGBossModule.forJobs([MultiJob, SingleJob, DisabledJob]),
+        PGBossModule.forJobs([MultiJob, SingleJob, DisabledJob, PlainJob]),
       ],
       providers: [LaneHandlers],
     })
-      .overrideProvider(PGBoss)
+      .overrideProvider(PG_BOSS_INSTANCE)
       .useValue(fakeBoss)
       .compile();
 
@@ -108,7 +122,7 @@ describe("PGBossModule — Handle({ workers })", () => {
 
     // Positive control: the shared callback really is the decorated method.
     const job = { id: "j1", name: "multi-lane", data: { fileId: "f1" } };
-    await callbacks[0]([job] as unknown as PGBoss.Job<unknown>[]);
+    await callbacks[0]([job] as unknown as Job<unknown>[]);
     const handlers = app.get(LaneHandlers);
     expect(handlers.handled).toEqual([[job]]);
   });
@@ -133,6 +147,26 @@ describe("PGBossModule — Handle({ workers })", () => {
     // And the fake is wired: other handlers on the same boss were registered.
     expect(callsFor("single-lane")).toHaveLength(1);
     expect(callsFor("disabled-lane")).toHaveLength(0);
+  });
+
+  it("provides the started instance under PG_BOSS_INSTANCE, and every JobService gets that instance", () => {
+    // Identity, not "is defined": the fake is the only object that can pass.
+    expect(app.get(PG_BOSS_INSTANCE)).toBe(fakeBoss);
+    const jobService = app.get<JobService<LaneJobData>>(
+      getJobToken("multi-lane"),
+    );
+    expect(jobService.boss).toBe(fakeBoss);
+    expect(jobService.jobName).toBe("multi-lane");
+  });
+
+  it("hands a handler declared with no options the batch as an array", async () => {
+    const calls = callsFor("plain-lane");
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual({});
+
+    const job = { id: "j2", name: "plain-lane", data: { fileId: "f2" } };
+    await calls[0][2]([job] as unknown as Job<unknown>[]);
+    expect(app.get(LaneHandlers).handled).toEqual([[job]]);
   });
 
   it.each([0, -1, 1.5, Number.NaN])(

@@ -8,13 +8,14 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { MetadataScanner, ModuleRef } from "@nestjs/core";
-import PGBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import { defer, lastValueFrom } from "rxjs";
 import { handleRetry } from "./utils";
 import { PGBossJobModule } from "./pg-boss-job.module";
 import { HandlerScannerService } from "./handler-scanner.service";
 import { PGBossModuleOptions } from "./interfaces/pg-boss-options.interface";
 import { Job } from "./job.service";
+import { PG_BOSS_INSTANCE } from "./pg-boss.constants";
 import {
   ASYNC_OPTIONS_TYPE,
   ConfigurableModuleClass,
@@ -31,7 +32,7 @@ export class PGBossModule
   implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger(this.constructor.name);
-  private instance: PGBoss;
+  private instance: PgBoss;
 
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -42,7 +43,7 @@ export class PGBossModule
 
   static forRoot(options: typeof OPTIONS_TYPE): DynamicModule {
     const instanceProvider = {
-      provide: PGBoss,
+      provide: PG_BOSS_INSTANCE,
       useFactory: async () => await this.createInstanceFactory(options),
     };
 
@@ -59,7 +60,7 @@ export class PGBossModule
 
   static forRootAsync(options: ASYNC_OPTIONS_TYPE): DynamicModule {
     const instanceProvider = {
-      provide: PGBoss,
+      provide: PG_BOSS_INSTANCE,
       useFactory: async (pgBossModuleOptions: PGBossModuleOptions) => {
         if (options.application_name) {
           return await this.createInstanceFactory({
@@ -87,7 +88,7 @@ export class PGBossModule
 
   private static async createInstanceFactory(options: PGBossModuleOptions) {
     const pgBoss = await lastValueFrom(
-      defer(async () => new PGBoss(options).start()).pipe(
+      defer(async () => new PgBoss(options).start()).pipe(
         handleRetry(
           options.retryAttempts,
           options.retryDelay,
@@ -109,7 +110,7 @@ export class PGBossModule
   }
 
   onModuleInit() {
-    this.instance = this.moduleRef.get<PGBoss>(PGBoss);
+    this.instance = this.moduleRef.get<PgBoss>(PG_BOSS_INSTANCE);
   }
 
   async onApplicationBootstrap(): Promise<void> {
