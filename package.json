@@ -19,21 +19,25 @@
   "files": [
     "./dist/"
   ],
+  "engines": {
+    "node": ">=26.12"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json"
   },
   "peerDependencies": {
     "@nestjs/common": "^9.3.3 || ^10.0.0 || ^11.0.0 || ^12.0.0",
     "@nestjs/core": "^9.3.3 || ^10.0.0 || ^11.0.0 || ^12.0.0",
-    "pg-boss": "^10.1.5",
+    "@opentelemetry/api": "^1.9.0",
+    "pg-boss": "^12.38.2",
     "reflect-metadata": "^0.1.13 || ^0.2.0",
     "rxjs": "^7.2.0"
   },
@@ -44,8 +48,9 @@
     "@nestjs/platform-express": "11.2.6",
     "@nestjs/schematics": "11.1.0",
     "@nestjs/testing": "11.2.6",
+    "@opentelemetry/api": "1.10.0",
     "@types/jest": "30.0.0",
-    "@types/node": "22.20.4",
+    "@types/node": "26.6.6",
     "@types/supertest": "7.2.1",
     "@typescript-eslint/eslint-plugin": "8.71.0",
     "@typescript-eslint/parser": "8.71.0",
@@ -53,17 +58,17 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-prettier": "5.5.6",
     "jest": "30.5.2",
-    "pg-boss": "10.4.2",
+    "pg-boss": "12.38.2",
     "prettier": "3.9.9",
     "rxjs": "7.8.2",
     "source-map-support": "0.5.21",
     "supertest": "7.3.0",
     "@testcontainers/postgresql": "11.14.0",
-    "ts-jest": "29.4.14",
+    "ts-jest": "29.4.15",
     "ts-loader": "9.6.2",
     "ts-node": "10.9.2",
     "tsconfig-paths": "4.2.0",
-    "typescript": "5.9.3"
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "dockerode": {

@@ -1,6 +1,12 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    // ENG-9414 (plan 117 SP01): the backend's module setting. `node20` lets
+    // `require(esm)` type-check and resolves the `.ts`-suffixed specifiers in
+    // pg-boss 12's `.d.ts`. This package has no `"type"` field, so it still
+    // emits CommonJS. `node20` also turns `esModuleInterop` on. pg-boss 12 is
+    // ESM with a named `PgBoss` export, so src/ imports `{ PgBoss }`
+    // (ENG-9430); Node 26 loads it through `require(esm)`.
+    "module": "node20",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
@@ -9,13 +15,22 @@
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    // `baseUrl` is gone: TypeScript 6 deprecates it (TS5101) and no import
+    // here relied on it; every import is relative or a package name.
     "incremental": true,
     "skipLibCheck": true,
+    // TypeScript 6 flips the default of `strict` from false to true. This file
+    // never set it, so `false` is what it already had; the three strict-family
+    // members below stay on individually.
+    "strict": false,
     "strictNullChecks": true,
     "noImplicitAny": true,
     "strictBindCallApply": true,
     "forceConsistentCasingInFileNames": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // TypeScript 6 flips the default of `types` from "every installed @types
+    // package" to `[]`. `["*"]` restores the old behaviour (jest and node
+    // globals in the specs, node globals in src).
+    "types": ["*"]
   }
 }

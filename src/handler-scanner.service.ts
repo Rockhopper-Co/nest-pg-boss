@@ -4,6 +4,7 @@ import { Injectable as InjectableInterface } from "@nestjs/common/interfaces";
 import { InstanceWrapper } from "@nestjs/core/injector/instance-wrapper";
 import { PG_BOSS_JOB_METADATA } from "./pg-boss.constants";
 import { HandlerMetadata } from "./interfaces/handler-metadata.interface";
+import { JobService } from "./job.service";
 import type { WorkHandler } from "pg-boss";
 
 @Injectable()
@@ -26,6 +27,18 @@ export class HandlerScannerService {
     }
 
     return metadata;
+  }
+
+  /**
+   * Every `JobService` in the application, in registration order: modules in
+   * the order Nest scanned them, providers in the order each module lists
+   * them. A queue registered in two modules appears twice.
+   */
+  getJobServices(): JobService<object>[] {
+    return [...this.modulesContainer.values()]
+      .flatMap(({ providers }) => [...providers.values()])
+      .map(({ instance }) => instance)
+      .filter(isJobService);
   }
 
   getJobHandlers(): {
@@ -69,6 +82,9 @@ export class HandlerScannerService {
       .filter(notEmpty);
   }
 }
+
+const isJobService = (instance: unknown): instance is JobService<object> =>
+  instance instanceof JobService;
 
 function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
   if (value === null || value === undefined) {
