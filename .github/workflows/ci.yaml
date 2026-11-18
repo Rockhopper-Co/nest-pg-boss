@@ -1,10 +1,18 @@
 name: CI
 
+# WHY THE UNIT SPECS RUN ON EVERY PUSH (plan 117 open question 5, decided
+# 2026-11-18, ENG-9431). The workspace rule runs full
+# suites only where someone waits. Here a builder does wait: without this step a
+# unit red is first seen in the epic's publish run after merge, where it blocks
+# the prerelease the backend pins. The step is cheap (one job, seconds of jest,
+# no database) and runs on GitHub-hosted runners, which cost nothing for this
+# public repository. The database-backed e2e suite (`test:e2e`) is NOT run here.
 on:
   push:
   workflow_call:
 
-# Read-only token: the job checks out, installs, builds and lints, nothing more
+# Read-only token: the job checks out, installs, builds, lints and runs the unit
+# specs, nothing more
 # (code scanning alert #4, actions/missing-workflow-permissions; ENG-7644).
 permissions:
   contents: read
@@ -25,3 +33,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint
+
+      # Unit specs only, per the decision above the trigger.
+      - name: Unit specs (npm test)
+        run: npm test
