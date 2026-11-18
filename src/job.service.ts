@@ -126,12 +126,18 @@ export class JobService<JobData extends object> {
   }
 }
 
+/**
+ * `Method` is the decorated method's own type, constrained to the handler
+ * pg-boss demands. A descriptor's type is invariant, so typing it as the
+ * handler itself refused any method that is a valid handler without being
+ * that exact type, such as one declaring fewer parameters.
+ */
 interface MethodDecorator<PropertyType> {
-  <Class>(
+  <Class, Method extends PropertyType>(
     target: Class,
     propertyKey: string | symbol,
-    descriptor: TypedPropertyDescriptor<PropertyType>,
-  ): TypedPropertyDescriptor<PropertyType>;
+    descriptor: TypedPropertyDescriptor<Method>,
+  ): TypedPropertyDescriptor<Method>;
 }
 
 export interface HandleOptions extends WorkOptions {
