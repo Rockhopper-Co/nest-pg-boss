@@ -12,6 +12,7 @@ import type {
   JobInsert,
   JobWithMetadata,
   PgBoss,
+  Queue,
   ScheduleOptions,
   SendOptions,
   WorkHandlerFor,
@@ -21,18 +22,58 @@ import { HandlerMetadata } from "./interfaces/handler-metadata.interface";
 import { PG_BOSS_INSTANCE, PG_BOSS_JOB_METADATA } from "./pg-boss.constants";
 import { getJobToken } from "./utils";
 
+/** pg-boss 12's queue options: policy, retries, expiry, retention, and so on. */
+export type JobQueueOptions = Omit<Queue, "name">;
+
+/** pg-boss 12.38.2 `dist/attorney.js:87-89`, checked here at declaration. */
+const QUEUE_NAME_RULE = /^[\w.\-/]+$/;
+
 @Injectable()
 export class JobService<JobData extends object> {
-  private readonly queue: any;
+  private readonly created: Promise<void>;
+  private settle: { resolve: () => void; reject: (error: Error) => void };
+
+  /**
+   * The service does not create its queue. `PGBossModule` creates every
+   * registered queue in its `onModuleInit`, one at a time, before any
+   * `onApplicationBootstrap` hook runs (plan 117 DESIGN D2).
+   */
   constructor(
     private readonly name: string,
     private readonly pgBoss: PgBoss,
+    private readonly options: JobQueueOptions = {},
   ) {
-    this.queue = pgBoss.createQueue(name);
+    this.created = new Promise<void>((resolve, reject) => {
+      this.settle = { resolve, reject };
+    });
+    // A failed creation fails the boot from `onModuleInit`. Without this, a
+    // service nobody awaited would also raise an unhandled rejection; a caller
+    // that awaits `queueInstance` still receives the rejection.
+    this.created.catch(() => undefined);
   }
 
-  get queueInstance() {
-    return this.queue;
+  /**
+   * Resolves once this queue exists; rejects, naming the queue, if it could
+   * not be created. Never await it inside an `onModuleInit` hook: the module
+   * creates queues in its own `onModuleInit`, which may run after yours.
+   */
+  get queueInstance(): Promise<void> {
+    return this.created;
+  }
+
+  /** The queue options from `createJob`, before the module's `queueDefaults`. */
+  get queueOptions(): JobQueueOptions {
+    return this.options;
+  }
+
+  /** Called by `PGBossModule` once it has created this queue. */
+  markQueueCreated(): void {
+    this.settle.resolve();
+  }
+
+  /** Called by `PGBossModule` when this queue was not created. */
+  markQueueFailed(error: Error): void {
+    this.settle.reject(error);
   }
 
   get boss() {
@@ -89,8 +130,8 @@ export class JobService<JobData extends object> {
     return this.pgBoss.schedule(this.name, cron, data, options);
   }
 
-  async unschedule() {
-    this.pgBoss.unschedule(this.name);
+  async unschedule(): Promise<void> {
+    return this.pgBoss.unschedule(this.name);
   }
 
   /**
@@ -147,10 +188,10 @@ export interface HandleOptions extends WorkOptions {
    */
   disabled?: boolean;
   /**
-   * How many `work()` loops to register on this queue, all with the same
-   * options and the same handler. Default 1. pg-boss 10 has no in-process
-   * concurrency option; calling `work()` several times is how one process
-   * handles several jobs from one queue at once. Never passed to pg-boss.
+   * How many workers this process runs on this queue. Default 1. The module
+   * passes it to pg-boss 12 as `localConcurrency` on ONE `work()` call, which
+   * spawns that many workers, each polling independently (plan 117 DESIGN
+   * D3). Give this or `localConcurrency`, not both.
    */
   workers?: number;
 }
@@ -173,21 +214,33 @@ export interface Job<JobData extends object = any> {
   Handle: HandleDecorator<JobData>;
 }
 
+/**
+ * `queueOptions` reach `createQueue` merged over the module's `queueDefaults`.
+ * The name is checked here, at declaration, against the rule pg-boss 12
+ * applies, so a bad name fails where it is written, not at boot.
+ */
 export const createJob = <JobData extends object>(
   name: string,
+  queueOptions: JobQueueOptions = {},
 ): Job<JobData> => {
+  if (!QUEUE_NAME_RULE.test(name)) {
+    throw new Error(
+      `Job "${name}": a queue name may contain only letters, digits, underscores, hyphens, periods and forward slashes`,
+    );
+  }
   const token = getJobToken(name);
 
   return {
     ServiceProvider: {
       provide: token,
-      useFactory: (pgBoss: PgBoss) => new JobService<JobData>(name, pgBoss),
+      useFactory: (pgBoss: PgBoss) =>
+        new JobService<JobData>(name, pgBoss, queueOptions),
       inject: [PG_BOSS_INSTANCE],
     },
     Inject: () => Inject(token),
     Handle: (options: HandleOptions = {}) => {
       const { disabled, workers, ...workOptions } = options;
-      // Refused here, at declaration, because a count that registers no loop
+      // Refused here, at declaration, because a count that starts no worker
       // would leave the queue silently unserved. `disabled` is the way to
       // register none.
       if (
@@ -196,6 +249,14 @@ export const createJob = <JobData extends object>(
       ) {
         throw new Error(
           `Job "${name}": workers must be a positive integer, got ${workers}`,
+        );
+      }
+      if (
+        workers !== undefined &&
+        workOptions.localConcurrency !== undefined
+      ) {
+        throw new Error(
+          `Job "${name}": give workers or localConcurrency, not both`,
         );
       }
       return SetMetadata<string, HandlerMetadata>(PG_BOSS_JOB_METADATA, {

@@ -63,6 +63,22 @@ interface IFoobarJobData {
 const FoobarJob = createJob<IFoobarJobData>("foobar")
 ```
 
+A queue name may contain only letters, digits, underscores, hyphens, periods
+and forward slashes (pg-boss 12's rule); `createJob` refuses any other name.
+The optional second argument is pg-boss 12's queue options (policy, retries,
+expiry, retention). They are merged over the module's `queueDefaults`:
+
+```typescript
+PGBossModule.forRoot({ /* connection */, queueDefaults: { retryLimit: 3 } })
+
+const FoobarJob = createJob<IFoobarJobData>("foobar", { policy: "short" })
+```
+
+The module creates every registered queue itself, once per name, one at a
+time, in its `onModuleInit`, so every queue exists before any
+`onApplicationBootstrap` hook (where workers start) runs. `queueInstance` on a
+`JobService` resolves when its queue exists.
+
 #### Create new Jobs
 
 ```typescript
@@ -119,11 +135,12 @@ You can optionally pass an object with [WorkOptions](https://github.com/timgit/p
 @FoobarJob.Handle({ batchSize: 1, pollingIntervalSeconds: 2 })
 ```
 
-pg-boss 10 has no in-process concurrency option (`teamSize` and
-`teamConcurrency` were removed and are silently ignored). To handle several jobs
-from one queue at once in one process, ask for several `work()` loops with
-`workers` (default 1). Each loop gets the same options and the same handler;
-`workers` itself is never passed to pg-boss, and `disabled: true` registers none.
+To handle several jobs from one queue at once in one process, ask for several
+workers with `workers` (default 1). The module makes ONE `work()` call with
+pg-boss 12's `localConcurrency` set to that number, and pg-boss spawns that many
+workers, each polling independently. `workers` itself is never passed to
+pg-boss; give `workers` or `localConcurrency`, not both. `disabled: true`
+registers none.
 
 ```typescript
 @FoobarJob.Handle({ batchSize: 1, workers: 3 })

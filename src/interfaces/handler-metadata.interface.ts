@@ -5,6 +5,9 @@ export interface HandlerMetadata {
   jobName: string;
   workOptions: WorkOptions;
   disabled?: boolean;
-  /** How many `work()` loops to register on this queue. Absent means 1. */
+  /**
+   * How many workers this process runs on this queue, passed to pg-boss as
+   * `localConcurrency` on one `work()` call. Absent means pg-boss's default, 1.
+   */
   workers?: number;
 }
