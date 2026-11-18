@@ -164,7 +164,9 @@ describe("PGBossModule — queue creation (ENG-9431)", () => {
     });
 
     it("merges the module's queueDefaults under each job's own queue options", () => {
-      const options = new Map(fake.boss.createQueue.mock.calls);
+      const options = new Map(
+        fake.boss.createQueue.mock.calls.map(([n, o]) => [n, o] as const),
+      );
       expect(options.get("queue-a")).toEqual({
         retryLimit: 3,
         retentionSeconds: 3600,
