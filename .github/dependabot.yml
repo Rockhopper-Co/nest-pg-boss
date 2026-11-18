@@ -21,8 +21,8 @@
 # WOULD block them, so never use one for this rule.
 #
 # Merging to `main` PUBLISHES (.github/workflows/publish.yaml derives the
-# version from run_number), so even a dev-only bump ships a new 2.2.x that
-# backend's caret range picks up. Review accordingly.
+# version from run_number), so even a dev-only bump ships a new 3.0.x on
+# `latest` that a consumer's `^3.0.x` range picks up. Review accordingly.
 #
 # No `labels:` key on purpose. Dependabot creates its DEFAULT `dependencies`
 # label when it is missing, but silently ignores a custom label list naming a
@@ -38,14 +38,12 @@ updates:
     open-pull-requests-limit: 5
     # ENG-9410, LTS-only policy. @types/node describes the Node runtime's APIs,
     # so its major follows the runtime this repository runs
-    # (.node-version 20.18.1),
+    # (.node-version 26.13.1, ENG-9414),
     # never the newest types: a later major type-checks code against APIs
     # the runtime lacks.
-    # 22.x minors and patches still arrive through
+    # 26.x minors and patches still arrive through
     # dev-minor-patch. Raise it by hand, in the same change that moves the
-    # runtime to the next LTS major. Note @types/node is 22.20.4 while
-    # .node-version is 20: this ignore stops the gap widening, it does not
-    # close it.
+    # runtime to the next LTS major.
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]

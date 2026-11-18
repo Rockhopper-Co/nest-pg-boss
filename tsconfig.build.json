@@ -1,4 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // ENG-9414: TypeScript 6 no longer infers `rootDir` from the common source
+    // directory (TS5011 once `outDir` is set). The build program holds only
+    // src/, so `./src` keeps the emitted layout at dist/index.js, which is
+    // what `main` in package.json points at.
+    "rootDir": "./src"
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
