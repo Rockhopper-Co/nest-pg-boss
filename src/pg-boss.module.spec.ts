@@ -1,6 +1,6 @@
 import { INestApplication, Injectable } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import * as PGBoss from "pg-boss";
+import PGBoss from "pg-boss";
 import { HandlerScannerService } from "./handler-scanner.service";
 import { createJob } from "./job.service";
 import { PGBossModule } from "./pg-boss.module";
