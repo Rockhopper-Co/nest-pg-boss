@@ -3,9 +3,9 @@
     // ENG-9414 (plan 117 SP01): the backend's module setting. `node20` lets
     // `require(esm)` type-check and resolves the `.ts`-suffixed specifiers in
     // pg-boss 12's `.d.ts`. This package has no `"type"` field, so it still
-    // emits CommonJS. `node20` also turns `esModuleInterop` on, which is why
-    // `pg-boss` is a default import in src/: a namespace import of an
-    // `export =` class cannot be constructed under interop (TS2351).
+    // emits CommonJS. `node20` also turns `esModuleInterop` on. pg-boss 12 is
+    // ESM with a named `PgBoss` export, so src/ imports `{ PgBoss }`
+    // (ENG-9430); Node 26 loads it through `require(esm)`.
     "module": "node20",
     "declaration": true,
     "removeComments": true,
