@@ -129,6 +129,12 @@ describe("PGBossModule — queue creation (ENG-9431)", () => {
   let app: INestApplication;
   let fake: ReturnType<typeof makeFakeBoss>;
 
+  // Every JobService registered under a queue name, one per forJobs() module.
+  // A bare app.get() returns only the LAST one Nest linked to the token
+  // (@nestjs/core injector/instance-links-host.ts), so it sees one of them.
+  const servicesOf = (name: string) =>
+    app.get<JobService<LaneJobData>>(getJobToken(name), { each: true });
+
   describe("when every create succeeds", () => {
     beforeEach(async () => {
       ({ app, fake } = await build());
@@ -153,11 +159,11 @@ describe("PGBossModule — queue creation (ENG-9431)", () => {
     });
 
     it("registered queue-a twice, as two job services, and still created it once", () => {
-      // Positive control for the line above: there really are two services.
-      const rootA = app.get<JobService<LaneJobData>>(getJobToken("queue-a"));
-      const senderA = app.get(BootSender).queueA;
-      expect(senderA).not.toBe(rootA);
-      expect(senderA.jobName).toBe("queue-a");
+      // Positive control for the line below: there really are two services.
+      const servicesA = servicesOf("queue-a");
+      expect(servicesA).toHaveLength(2);
+      expect(servicesA[0]).not.toBe(servicesA[1]);
+      expect(servicesA).toContain(app.get(BootSender).queueA);
       expect(
         fake.boss.createQueue.mock.calls.filter(([n]) => n === "queue-a"),
       ).toHaveLength(1);
@@ -192,10 +198,9 @@ describe("PGBossModule — queue creation (ENG-9431)", () => {
     });
 
     it("resolves queueInstance on every job service of a created queue", async () => {
-      const rootA = app.get<JobService<LaneJobData>>(getJobToken("queue-a"));
-      const senderA = app.get(BootSender).queueA;
-      const rootB = app.get<JobService<LaneJobData>>(getJobToken("queue-b"));
-      for (const service of [rootA, senderA, rootB]) {
+      const services = [...servicesOf("queue-a"), ...servicesOf("queue-b")];
+      expect(services).toHaveLength(3);
+      for (const service of services) {
         await expect(service.queueInstance).resolves.toBeUndefined();
       }
     });
