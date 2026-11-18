@@ -39,6 +39,15 @@ name: Publish package
 # REMOVE THIS BRANCH from the trigger, the ref guard and the version step at
 # the epic's close-out (plan 117 SP13), and move the backend's exact pin to a
 # `^3.0.x` range.
+#
+# WHY THE E2E SUITE RUNS IN THIS JOB (plan 117 DESIGN D11, ENG-9432). A
+# publish is where a consumer waits: the backend pins the exact prerelease this
+# job publishes, so a wrapper that cannot boot, create its queues or deliver a
+# job against a real database must not publish. The suite is therefore a step
+# of this job, after `npm test` and before `npm publish`, on both arms. It is
+# not a `workflow_dispatch`-only file, because GitHub dispatches a workflow only
+# when the file is on the default branch, and putting one on `main` early would
+# publish a 2.2.x. No trigger is added for it.
 on:
   push:
     branches: [main, epic/pg-boss-12]
@@ -105,9 +114,15 @@ jobs:
 
       # The unit specs, BEFORE anything is published. The epic arm ships code to
       # the backend that no `main` review has seen yet, so this is the last place
-      # a broken build can be stopped. Unit specs only; the database-backed e2e
-      # suite (`test:e2e`) is not run here yet (plan 117 SP04 adds it).
+      # a broken build can be stopped.
       - run: npm test
+
+      # The e2e suite, against a real pg-boss 12 database (a postgres:14-alpine
+      # testcontainer; Docker is on the hosted runner), after the unit specs and
+      # BEFORE `npm publish`, on both arms. Why here is in the header above the
+      # trigger (plan 117 DESIGN D11). A red stops the run, so nothing publishes.
+      - name: e2e on a real database (npm run test:e2e)
+        run: npm run test:e2e
 
       # Version is derived, never committed. github.run_number is monotonic per
       # workflow file, so every merge to main produces a strictly higher
