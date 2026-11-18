@@ -1,11 +1,13 @@
 import {
   DynamicModule,
   Global,
+  Inject,
   Logger,
   Module,
   OnApplicationBootstrap,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { MetadataScanner, ModuleRef } from "@nestjs/core";
 import { PgBoss } from "pg-boss";
@@ -14,7 +16,7 @@ import { handleRetry } from "./utils";
 import { PGBossJobModule } from "./pg-boss-job.module";
 import { HandlerScannerService } from "./handler-scanner.service";
 import { PGBossModuleOptions } from "./interfaces/pg-boss-options.interface";
-import { Job } from "./job.service";
+import { Job, JobService } from "./job.service";
 import { PG_BOSS_INSTANCE } from "./pg-boss.constants";
 import {
   ASYNC_OPTIONS_TYPE,
@@ -37,6 +39,9 @@ export class PGBossModule
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly handlerScannerService: HandlerScannerService,
+    @Optional()
+    @Inject(MODULE_OPTIONS_TOKEN)
+    private readonly options?: PGBossModuleOptions,
   ) {
     super();
   }
@@ -86,15 +91,23 @@ export class PGBossModule
     return dynamicModule;
   }
 
+  /**
+   * The retry keys drive this module's connection retry and `queueDefaults`
+   * feeds `createQueue`; none of them is a pg-boss constructor option, so
+   * pg-boss receives everything else and nothing of these.
+   */
   private static async createInstanceFactory(options: PGBossModuleOptions) {
+    const {
+      retryAttempts,
+      retryDelay,
+      verboseRetryLog,
+      toRetry,
+      queueDefaults, // eslint-disable-line @typescript-eslint/no-unused-vars -- removed, read in onModuleInit
+      ...constructorOptions
+    } = options;
     const pgBoss = await lastValueFrom(
-      defer(async () => new PgBoss(options).start()).pipe(
-        handleRetry(
-          options.retryAttempts,
-          options.retryDelay,
-          options.verboseRetryLog,
-          options.toRetry,
-        ),
+      defer(async () => new PgBoss(constructorOptions).start()).pipe(
+        handleRetry(retryAttempts, retryDelay, verboseRetryLog, toRetry),
       ),
     );
 
@@ -109,8 +122,15 @@ export class PGBossModule
     };
   }
 
-  onModuleInit() {
+  /**
+   * Creates every registered queue before any `onApplicationBootstrap` hook
+   * runs: Nest awaits every `onModuleInit` first, and bootstrap hooks are
+   * where workers and crons start and where other providers may send. pg-boss
+   * 12 refuses a send to a queue that does not exist (DESIGN D2).
+   */
+  async onModuleInit(): Promise<void> {
     this.instance = this.moduleRef.get<PgBoss>(PG_BOSS_INSTANCE);
+    await this.createQueues();
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -146,21 +166,69 @@ export class PGBossModule
           return;
         }
 
-        const workers = handler.metadata.workers ?? 1;
-        await Promise.all(
-          Array.from({ length: workers }, async () => {
-            const workerID = await this.instance.work(
-              handler.metadata.jobName,
-              handler.metadata.workOptions,
-              handler.callback,
-            );
-            this.logger.log(
-              { workerID, jobName: handler.metadata.jobName },
-              "Registered Worker",
-            );
-          }),
+        // One `work()` call; pg-boss 12 spawns `localConcurrency` workers.
+        const { jobName, workOptions, workers } = handler.metadata;
+        const options =
+          workers === undefined
+            ? workOptions
+            : { ...workOptions, localConcurrency: workers };
+        const workerID = await this.instance.work(
+          jobName,
+          options,
+          handler.callback,
         );
+        this.logger.log({ workerID, jobName, workers }, "Registered Worker");
       }),
     );
+  }
+
+  /**
+   * One `createQueue` per distinct name, in registration order, each awaited
+   * before the next starts: concurrent `create_queue` calls deadlocked the
+   * backend at boot (ENG-2053). A failure stops the boot with the queue named,
+   * and every job service whose queue was not created rejects its
+   * `queueInstance` with the reason.
+   */
+  private async createQueues(): Promise<void> {
+    const byName = new Map<string, JobService<object>[]>();
+    for (const service of this.handlerScannerService.getJobServices()) {
+      byName.set(service.jobName, [
+        ...(byName.get(service.jobName) ?? []),
+        service,
+      ]);
+    }
+    const queues = [...byName.entries()];
+    const defaults = this.options?.queueDefaults ?? {};
+
+    for (const [index, [name, services]] of queues.entries()) {
+      const queueOptions = { ...defaults, ...services[0].queueOptions };
+      const first = JSON.stringify(services[0].queueOptions);
+      if (services.some((s) => JSON.stringify(s.queueOptions) !== first)) {
+        this.logger.warn(
+          { jobName: name, queueOptions },
+          "Queue registered more than once with different options; created with the first",
+        );
+      }
+      try {
+        await this.instance.createQueue(name, queueOptions);
+      } catch (cause) {
+        const reason = cause instanceof Error ? cause.message : String(cause);
+        const error = new Error(
+          `pg-boss could not create queue "${name}": ${reason}`,
+          { cause },
+        );
+        services.forEach((service) => service.markQueueFailed(error));
+        for (const [skipped, rest] of queues.slice(index + 1)) {
+          const notReached = new Error(
+            `pg-boss: queue "${skipped}" was not created because queue "${name}" failed first`,
+            { cause: error },
+          );
+          rest.forEach((service) => service.markQueueFailed(notReached));
+        }
+        throw error;
+      }
+      services.forEach((service) => service.markQueueCreated());
+      this.logger.log({ jobName: name }, "Created queue");
+    }
   }
 }
