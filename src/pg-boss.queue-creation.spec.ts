@@ -179,9 +179,7 @@ describe("PGBossModule — queue creation (ENG-9431)", () => {
     it("calls work() only after the last createQueue resolved", () => {
       const firstWork = fake.log.findIndex((e) => e.startsWith("work:"));
       expect(fake.log[firstWork]).toBe("work:queue-b");
-      expect(firstWork).toBeGreaterThan(
-        fake.log.indexOf("create:end:queue-b"),
-      );
+      expect(firstWork).toBeGreaterThan(fake.log.indexOf("create:end:queue-b"));
     });
 
     it("lets a provider in another module send from onApplicationBootstrap", () => {

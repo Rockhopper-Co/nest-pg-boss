@@ -251,10 +251,7 @@ export const createJob = <JobData extends object>(
           `Job "${name}": workers must be a positive integer, got ${workers}`,
         );
       }
-      if (
-        workers !== undefined &&
-        workOptions.localConcurrency !== undefined
-      ) {
+      if (workers !== undefined && workOptions.localConcurrency !== undefined) {
         throw new Error(
           `Job "${name}": give workers or localConcurrency, not both`,
         );
